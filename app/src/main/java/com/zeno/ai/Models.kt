@@ -7,6 +7,9 @@ data class ChatMessage(val id: Long, val role: String, val text: String) {
 }
 
 data class AppSettings(
+    val provider: String = "openrouter",
+    val orKey: String = "",
+    val orModel: String = "openrouter/free",
     val apiKey: String = "",
     val model: String = "gemini-2.5-flash",
     val lang: String = "te-IN",

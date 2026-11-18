@@ -359,28 +359,56 @@ private fun SettingsScreen(vm: ZenoViewModel) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        SectionTitle("Gemini API key")
+        SectionTitle("AI provider")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("openrouter" to "OpenRouter (free)", "gemini" to "Gemini").forEach { (code, label) ->
+                val sel = s.provider == code
+                Text(
+                    label,
+                    color = if (sel) ZBg else ZTextHi,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (sel) ZCyan else ZCard)
+                        .clickable { vm.updateSettings(s.copy(provider = code)) }
+                        .padding(horizontal = 16.dp, vertical = 9.dp),
+                )
+            }
+        }
+
+        val isOr = s.provider == "openrouter"
+        SectionTitle(if (isOr) "OpenRouter API key" else "Gemini API key")
         OutlinedTextField(
-            value = s.apiKey,
-            onValueChange = { vm.updateSettings(s.copy(apiKey = it.trim())) },
+            value = if (isOr) s.orKey else s.apiKey,
+            onValueChange = {
+                vm.updateSettings(if (isOr) s.copy(orKey = it.trim()) else s.copy(apiKey = it.trim()))
+            },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
-            placeholder = { Text("AIza…") },
+            placeholder = { Text(if (isOr) "sk-or-…" else "AIza…") },
             shape = RoundedCornerShape(14.dp),
             colors = fieldColors(),
         )
-        Text("Free key: aistudio.google.com/apikey. Ee phone lo mathrame save avthundi.", color = ZTextLo, fontSize = 12.sp)
+        Text(
+            if (isOr) "Free key: openrouter.ai/keys. Ee phone lo mathrame save avthundi."
+            else "Free key: aistudio.google.com/apikey. Ee phone lo mathrame save avthundi.",
+            color = ZTextLo,
+            fontSize = 12.sp,
+        )
 
         SectionTitle("Model")
         OutlinedTextField(
-            value = s.model,
-            onValueChange = { vm.updateSettings(s.copy(model = it.trim())) },
+            value = if (isOr) s.orModel else s.model,
+            onValueChange = {
+                vm.updateSettings(if (isOr) s.copy(orModel = it.trim()) else s.copy(model = it.trim()))
+            },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             shape = RoundedCornerShape(14.dp),
             colors = fieldColors(),
         )
+        if (isOr) Text("openrouter/free = free models lo available ayyedi auto select chesthundi.", color = ZTextLo, fontSize = 12.sp)
 
         SectionTitle("Voice language")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

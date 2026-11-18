@@ -14,6 +14,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "2.0"
+        buildConfigField("String", "DEFAULT_OR_KEY", "\"${System.getenv("OPENROUTER_API_KEY") ?: ""}\"")
         buildConfigField("String", "DEFAULT_API_KEY", "\"${System.getenv("GEMINI_API_KEY") ?: ""}\"")
     }
 

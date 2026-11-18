@@ -13,6 +13,9 @@ class Store(ctx: Context) {
     fun loadSettings(): AppSettings {
         val d = AppSettings()
         return AppSettings(
+            provider = prefs.getString("provider", d.provider) ?: d.provider,
+            orKey = prefs.getString("orKey", null)?.takeIf { it.isNotBlank() } ?: BuildConfig.DEFAULT_OR_KEY,
+            orModel = prefs.getString("orModel", d.orModel) ?: d.orModel,
             apiKey = prefs.getString("apiKey", null)?.takeIf { it.isNotBlank() } ?: BuildConfig.DEFAULT_API_KEY,
             model = prefs.getString("model", d.model) ?: d.model,
             lang = prefs.getString("lang", d.lang) ?: d.lang,
@@ -23,6 +26,9 @@ class Store(ctx: Context) {
 
     fun saveSettings(s: AppSettings) {
         prefs.edit()
+            .putString("provider", s.provider)
+            .putString("orKey", s.orKey)
+            .putString("orModel", s.orModel)
             .putString("apiKey", s.apiKey)
             .putString("model", s.model)
             .putString("lang", s.lang)

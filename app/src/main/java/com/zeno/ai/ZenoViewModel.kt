@@ -17,6 +17,7 @@ class ZenoViewModel(app: Application) : AndroidViewModel(app) {
 
     private val store = Store(app)
     private val client = GeminiClient()
+    private val orClient = OpenRouterClient()
     private val voice = VoiceController(app)
     private val commands = CommandHandler(app)
 
@@ -91,8 +92,9 @@ class ZenoViewModel(app: Application) : AndroidViewModel(app) {
             finish(local, viaVoice)
             return
         }
-        if (settings.apiKey.isBlank()) {
-            error = "Settings lo Gemini API key add cheyandi"
+        val useOr = settings.provider == "openrouter"
+        if ((if (useOr) settings.orKey else settings.apiKey).isBlank()) {
+            error = "Settings lo " + (if (useOr) "OpenRouter" else "Gemini") + " API key add cheyandi"
             orb = OrbState.Idle
             return
         }
@@ -104,7 +106,9 @@ class ZenoViewModel(app: Application) : AndroidViewModel(app) {
         job = viewModelScope.launch {
             val sb = StringBuilder()
             try {
-                client.stream(settings.apiKey, settings.model, SYSTEM_PROMPT, context).collect { chunk ->
+                val flow = if (useOr) orClient.stream(settings.orKey, settings.orModel, SYSTEM_PROMPT, context)
+                else client.stream(settings.apiKey, settings.model, SYSTEM_PROMPT, context)
+                flow.collect { chunk ->
                     sb.append(chunk)
                     messages[idx] = messages[idx].copy(text = sb.toString())
                 }
