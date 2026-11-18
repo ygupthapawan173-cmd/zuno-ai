@@ -13,7 +13,7 @@ class Store(ctx: Context) {
     fun loadSettings(): AppSettings {
         val d = AppSettings()
         return AppSettings(
-            apiKey = prefs.getString("apiKey", d.apiKey) ?: d.apiKey,
+            apiKey = prefs.getString("apiKey", null)?.takeIf { it.isNotBlank() } ?: BuildConfig.DEFAULT_API_KEY,
             model = prefs.getString("model", d.model) ?: d.model,
             lang = prefs.getString("lang", d.lang) ?: d.lang,
             speak = prefs.getBoolean("speak", d.speak),
