@@ -1,10 +1,17 @@
 package com.zeno.ai.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Build
+import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -57,7 +65,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -65,9 +77,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.zeno.ai.ChatMessage
+import com.zeno.ai.ImageUtil
 import com.zeno.ai.OrbState
-import com.zeno.ai.ZenoViewModel
+import com.zeno.ai.WakeWordService
+import com.zeno.ai.ZenoEngine
 import com.zeno.ai.ui.theme.ZBg
 import com.zeno.ai.ui.theme.ZBg2
 import com.zeno.ai.ui.theme.ZCard
@@ -77,10 +92,32 @@ import com.zeno.ai.ui.theme.ZMagenta
 import com.zeno.ai.ui.theme.ZTextHi
 import com.zeno.ai.ui.theme.ZTextLo
 import com.zeno.ai.ui.theme.ZViolet
+import java.io.File
+
+private const val DEFAULT_IMAGE_PROMPT = "Ee image lo em undo cheppu"
 
 @Composable
-fun ZenoApp(vm: ZenoViewModel) {
+fun ZenoApp(vm: ZenoEngine) {
+    val ctx = LocalContext.current
     var tab by rememberSaveable { mutableIntStateOf(0) }
+
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
+    LaunchedEffect(Unit) {
+        val wanted = buildList {
+            add(Manifest.permission.RECORD_AUDIO)
+            add(Manifest.permission.READ_CONTACTS)
+            if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        val missing = wanted.filter { ContextCompat.checkSelfPermission(ctx, it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isNotEmpty()) permLauncher.launch(missing.toTypedArray())
+    }
+    LaunchedEffect(vm.openTab) {
+        vm.openTab?.let {
+            tab = it
+            vm.openTab = null
+        }
+    }
+
     Box(
         Modifier
             .fillMaxSize()
@@ -108,12 +145,13 @@ fun ZenoApp(vm: ZenoViewModel) {
 }
 
 @Composable
-private fun Header(vm: ZenoViewModel) {
+private fun Header(vm: ZenoEngine) {
+    val palette = OrbPalettes[vm.settings.theme.coerceIn(0, OrbPalettes.lastIndex)]
     val dot = when (vm.orb) {
         OrbState.Idle -> ZTextLo
-        OrbState.Listening -> ZCyan
-        OrbState.Thinking -> ZViolet
-        OrbState.Speaking -> ZMagenta
+        OrbState.Listening -> palette.listen
+        OrbState.Thinking -> palette.think
+        OrbState.Speaking -> palette.speak
     }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
@@ -121,7 +159,7 @@ private fun Header(vm: ZenoViewModel) {
     ) {
         Text(
             "ZENO",
-            color = ZCyan,
+            color = palette.listen,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
             fontSize = 20.sp,
@@ -193,15 +231,41 @@ private fun TabBar(selected: Int, onSelect: (Int) -> Unit) {
     }
 }
 
+/** A row of selectable pills; [options] are (value, label) pairs. */
+@Composable
+private fun Pills(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { (value, label) ->
+            val sel = selected == value
+            Text(
+                label,
+                color = if (sel) ZBg else ZTextHi,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(if (sel) ZCyan else ZCard)
+                    .clickable { onSelect(value) }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
+
 // ---------------------------------------------------------------- Voice
 
 @Composable
-private fun HomeScreen(vm: ZenoViewModel) {
+private fun HomeScreen(vm: ZenoEngine) {
     val ctx = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    val s = vm.settings
+    val palette = OrbPalettes[s.theme.coerceIn(0, OrbPalettes.lastIndex)]
+
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) vm.startListening() else vm.error = "Mic permission ivvandi"
     }
     val onTap: () -> Unit = {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         if (vm.orb == OrbState.Idle) {
             val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) ==
                 PackageManager.PERMISSION_GRANTED
@@ -210,8 +274,9 @@ private fun HomeScreen(vm: ZenoViewModel) {
             vm.stop()
         }
     }
+    val translator = s.mode == "translator"
     val status = when (vm.orb) {
-        OrbState.Idle -> "Tap the orb and speak"
+        OrbState.Idle -> if (translator) "Translator: tap and speak" else "Tap the orb and speak"
         OrbState.Listening -> "Listening…"
         OrbState.Thinking -> "Thinking…"
         OrbState.Speaking -> "Speaking… tap to stop"
@@ -222,17 +287,29 @@ private fun HomeScreen(vm: ZenoViewModel) {
         Modifier.fillMaxSize().padding(horizontal = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(16.dp))
-        Text(status, color = ZTextLo, fontFamily = FontFamily.Monospace, fontSize = 14.sp, letterSpacing = 1.sp)
+        Pills(
+            options = listOf("assistant" to "Assistant", "translator" to "Translator"),
+            selected = s.mode,
+            onSelect = { vm.updateSettings(s.copy(mode = it)) },
+        )
         Spacer(Modifier.height(8.dp))
+        Pills(
+            options = listOf("te-IN" to "తెలుగు", "en-IN" to "English", "hi-IN" to "हिन्दी"),
+            selected = s.lang,
+            onSelect = { vm.updateSettings(s.copy(lang = it)) },
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(status, color = ZTextLo, fontFamily = FontFamily.Monospace, fontSize = 14.sp, letterSpacing = 1.sp)
+        Spacer(Modifier.height(4.dp))
         Orb(
             state = vm.orb,
             level = vm.level,
+            palette = palette,
             modifier = Modifier
-                .size(280.dp)
+                .size(250.dp)
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onTap() },
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -240,7 +317,7 @@ private fun HomeScreen(vm: ZenoViewModel) {
             val shown = if (vm.partial.isNotEmpty()) "“${vm.partial}”" else lastReply
             Text(
                 shown,
-                color = if (vm.partial.isNotEmpty()) ZCyan else ZTextHi,
+                color = if (vm.partial.isNotEmpty()) palette.listen else ZTextHi,
                 fontSize = 18.sp,
                 lineHeight = 26.sp,
                 textAlign = TextAlign.Center,
@@ -252,8 +329,13 @@ private fun HomeScreen(vm: ZenoViewModel) {
 }
 
 @Composable
-private fun QuickChips(vm: ZenoViewModel) {
-    val chips = listOf("What's the time?", "Open YouTube", "Torch on", "Tell me a joke", "Telugu lo oka fun fact cheppu")
+private fun QuickChips(vm: ZenoEngine) {
+    val chips = if (vm.settings.mode == "translator") {
+        emptyList()
+    } else {
+        listOf("Good morning", "What's the time?", "Open YouTube", "Torch on", "Timer 5 minutes", "Tell me a joke")
+    }
+    if (chips.isEmpty()) return
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 4.dp)) {
         items(chips) { label ->
             Text(
@@ -274,18 +356,39 @@ private fun QuickChips(vm: ZenoViewModel) {
 // ---------------------------------------------------------------- Chat
 
 @Composable
-private fun ChatScreen(vm: ZenoViewModel) {
+private fun ChatScreen(vm: ZenoEngine) {
+    val ctx = LocalContext.current
     var input by remember { mutableStateOf("") }
+    var cameraUri by remember { mutableStateOf<Uri?>(null) }
     val listState = rememberLazyListState()
     val lastLen = vm.messages.lastOrNull()?.text?.length ?: 0
+
     LaunchedEffect(vm.messages.size, lastLen) {
         if (vm.messages.isNotEmpty()) listState.scrollToItem(vm.messages.lastIndex)
+    }
+
+    fun sendImage(uri: Uri) {
+        val b64 = ImageUtil.toBase64(ctx, uri)
+        if (b64 == null) {
+            vm.error = "Image load cheyalekapoyanu"
+        } else {
+            vm.send(input.ifBlank { DEFAULT_IMAGE_PROMPT }, image = b64)
+            input = ""
+        }
+    }
+
+    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val uri = cameraUri
+        if (ok && uri != null) sendImage(uri)
+    }
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) sendImage(uri)
     }
 
     Column(Modifier.fillMaxSize()) {
         if (vm.messages.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text("Zeno ni edaina adagandi…", color = ZTextLo)
+                Text("Zeno ni edaina adagandi, leda photo pampandi…", color = ZTextLo)
             }
         } else {
             LazyColumn(
@@ -298,9 +401,33 @@ private fun ChatScreen(vm: ZenoViewModel) {
             }
         }
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Text(
+                "📷",
+                fontSize = 22.sp,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable {
+                        val dir = File(ctx.cacheDir, "images").apply { mkdirs() }
+                        val file = File(dir, "shot_${System.currentTimeMillis()}.jpg")
+                        val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".fileprovider", file)
+                        cameraUri = uri
+                        takePicture.launch(uri)
+                    }
+                    .padding(8.dp),
+            )
+            Text(
+                "🖼️",
+                fontSize = 22.sp,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable {
+                        pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }
+                    .padding(8.dp),
+            )
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
@@ -310,7 +437,6 @@ private fun ChatScreen(vm: ZenoViewModel) {
                 maxLines = 4,
                 colors = fieldColors(),
             )
-            Spacer(Modifier.size(8.dp))
             IconButton(
                 onClick = {
                     vm.send(input)
@@ -331,8 +457,18 @@ private fun ChatScreen(vm: ZenoViewModel) {
 @Composable
 private fun Bubble(m: ChatMessage) {
     val shape = RoundedCornerShape(18.dp)
+    val bitmap = remember(m.id, m.image) {
+        m.image?.let {
+            try {
+                val bytes = Base64.decode(it, Base64.NO_WRAP)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
     Box(Modifier.fillMaxWidth(), contentAlignment = if (m.isUser) Alignment.CenterEnd else Alignment.CenterStart) {
-        Box(
+        Column(
             Modifier
                 .widthIn(max = 300.dp)
                 .clip(shape)
@@ -343,6 +479,18 @@ private fun Bubble(m: ChatMessage) {
                 .border(1.dp, if (m.isUser) ZCyan.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.06f), shape)
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 200.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             SelectionContainer {
                 Text(if (m.text.isEmpty()) "…" else m.text, color = ZTextHi, fontSize = 15.sp, lineHeight = 22.sp)
             }
@@ -353,30 +501,22 @@ private fun Bubble(m: ChatMessage) {
 // ---------------------------------------------------------------- Settings
 
 @Composable
-private fun SettingsScreen(vm: ZenoViewModel) {
+private fun SettingsScreen(vm: ZenoEngine) {
+    val ctx = LocalContext.current
     val s = vm.settings
+    val isOr = s.provider == "openrouter"
+
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         SectionTitle("AI provider")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("openrouter" to "OpenRouter (free)", "gemini" to "Gemini").forEach { (code, label) ->
-                val sel = s.provider == code
-                Text(
-                    label,
-                    color = if (sel) ZBg else ZTextHi,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (sel) ZCyan else ZCard)
-                        .clickable { vm.updateSettings(s.copy(provider = code)) }
-                        .padding(horizontal = 16.dp, vertical = 9.dp),
-                )
-            }
-        }
+        Pills(
+            options = listOf("openrouter" to "OpenRouter (free)", "gemini" to "Gemini"),
+            selected = s.provider,
+            onSelect = { vm.updateSettings(s.copy(provider = it)) },
+        )
 
-        val isOr = s.provider == "openrouter"
         SectionTitle(if (isOr) "OpenRouter API key" else "Gemini API key")
         OutlinedTextField(
             value = if (isOr) s.orKey else s.apiKey,
@@ -408,25 +548,31 @@ private fun SettingsScreen(vm: ZenoViewModel) {
             shape = RoundedCornerShape(14.dp),
             colors = fieldColors(),
         )
-        if (isOr) Text("openrouter/free = free models lo available ayyedi auto select chesthundi.", color = ZTextLo, fontSize = 12.sp)
-
-        SectionTitle("Voice language")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("te-IN" to "తెలుగు", "en-IN" to "English", "hi-IN" to "हिन्दी").forEach { (code, label) ->
-                val sel = s.lang == code
-                Text(
-                    label,
-                    color = if (sel) ZBg else ZTextHi,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (sel) ZCyan else ZCard)
-                        .clickable { vm.updateSettings(s.copy(lang = code)) }
-                        .padding(horizontal = 16.dp, vertical = 9.dp),
-                )
-            }
+        if (isOr) {
+            Text("openrouter/free = free models lo available ayyedi auto select chesthundi.", color = ZTextLo, fontSize = 12.sp)
         }
 
+        SectionTitle("Voice language")
+        Pills(
+            options = listOf("te-IN" to "తెలుగు", "en-IN" to "English", "hi-IN" to "हिन्दी"),
+            selected = s.lang,
+            onSelect = { vm.updateSettings(s.copy(lang = it)) },
+        )
+
+        SectionTitle("Orb theme")
+        Pills(
+            options = OrbPalettes.mapIndexed { i, p -> i.toString() to p.name },
+            selected = s.theme.toString(),
+            onSelect = { vm.updateSettings(s.copy(theme = it.toInt())) },
+        )
+
+        SwitchRow("Hey Zeno wake word", "App close chesina, screen off lo kuda \"Hey Zeno\" ani pilavochu", s.wake) { on ->
+            vm.updateSettings(s.copy(wake = on))
+            val mic = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            if (on && mic) WakeWordService.start(ctx)
+            else if (on) vm.error = "Mic permission ivvandi, tarvata malli on cheyandi"
+            else WakeWordService.stop(ctx)
+        }
         SwitchRow("Reply voice lo chepali", "Voice tho adigina prathi answer ni Zeno matladutundi", s.speak) {
             vm.updateSettings(s.copy(speak = it))
         }
@@ -434,12 +580,57 @@ private fun SettingsScreen(vm: ZenoViewModel) {
             vm.updateSettings(s.copy(continuous = it))
         }
 
+        SectionTitle("City (Good morning briefing kosam)")
+        OutlinedTextField(
+            value = s.city,
+            onValueChange = { vm.updateSettings(s.copy(city = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            placeholder = { Text("Hyderabad") },
+            shape = RoundedCornerShape(14.dp),
+            colors = fieldColors(),
+        )
+
+        SectionTitle("Zeno ki gurtunna vishayalu")
+        if (vm.memory.isEmpty()) {
+            Text("Inka emi ledu. Voice lo \"remember that …\" ani cheppandi.", color = ZTextLo, fontSize = 13.sp)
+        } else {
+            vm.memory.toList().forEachIndexed { i, fact ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(ZCard)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(fact, color = ZTextHi, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Text(
+                        "✕",
+                        color = ZError,
+                        modifier = Modifier.clip(CircleShape).clickable { vm.forget(i) }.padding(8.dp),
+                    )
+                }
+            }
+        }
+
+        OutlinedButton(
+            onClick = {
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, vm.exportChat())
+                }
+                ctx.startActivity(Intent.createChooser(send, "Chat export"))
+            },
+            border = BorderStroke(1.dp, ZCyan.copy(alpha = 0.6f)),
+        ) { Text("Chat export / share", color = ZCyan) }
+
         OutlinedButton(
             onClick = { vm.clearHistory() },
             border = BorderStroke(1.dp, ZError.copy(alpha = 0.6f)),
         ) { Text("Chat history clear cheyyi", color = ZError) }
 
-        Text("Zeno AI v2.0", color = ZTextLo, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        Text("Zeno AI v3.0", color = ZTextLo, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
     }
 }
 

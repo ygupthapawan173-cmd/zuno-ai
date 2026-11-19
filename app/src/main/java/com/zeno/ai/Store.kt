@@ -5,10 +5,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-/** Settings in SharedPreferences, chat history in a small JSON file. */
+/** Settings in SharedPreferences, chat history and memory in small JSON files. */
 class Store(ctx: Context) {
     private val prefs = ctx.getSharedPreferences("zeno", Context.MODE_PRIVATE)
     private val historyFile = File(ctx.filesDir, "history.json")
+    private val memoryFile = File(ctx.filesDir, "memory.json")
 
     fun loadSettings(): AppSettings {
         val d = AppSettings()
@@ -21,6 +22,10 @@ class Store(ctx: Context) {
             lang = prefs.getString("lang", d.lang) ?: d.lang,
             speak = prefs.getBoolean("speak", d.speak),
             continuous = prefs.getBoolean("continuous", d.continuous),
+            mode = prefs.getString("mode", d.mode) ?: d.mode,
+            wake = prefs.getBoolean("wake", d.wake),
+            city = prefs.getString("city", d.city) ?: d.city,
+            theme = prefs.getInt("theme", d.theme),
         )
     }
 
@@ -34,6 +39,10 @@ class Store(ctx: Context) {
             .putString("lang", s.lang)
             .putBoolean("speak", s.speak)
             .putBoolean("continuous", s.continuous)
+            .putString("mode", s.mode)
+            .putBoolean("wake", s.wake)
+            .putString("city", s.city)
+            .putInt("theme", s.theme)
             .apply()
     }
 
@@ -56,6 +65,24 @@ class Store(ctx: Context) {
                 arr.put(JSONObject().put("id", it.id).put("role", it.role).put("text", it.text))
             }
             historyFile.writeText(arr.toString())
+        } catch (_: Exception) {
+        }
+    }
+
+    fun loadMemory(): List<String> = try {
+        if (!memoryFile.exists()) emptyList() else {
+            val arr = JSONArray(memoryFile.readText())
+            (0 until arr.length()).map { arr.getString(it) }
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    fun saveMemory(list: List<String>) {
+        try {
+            val arr = JSONArray()
+            list.forEach { arr.put(it) }
+            memoryFile.writeText(arr.toString())
         } catch (_: Exception) {
         }
     }

@@ -29,12 +29,18 @@ class GeminiClient {
         history: List<ChatMessage>,
     ): Flow<String> = callbackFlow {
         val contents = JSONArray()
-        history.forEach { m ->
-            contents.put(
-                JSONObject()
-                    .put("role", if (m.isUser) "user" else "model")
-                    .put("parts", JSONArray().put(JSONObject().put("text", m.text)))
-            )
+        history.forEachIndexed { i, m ->
+            val parts = JSONArray().put(JSONObject().put("text", m.text.ifEmpty { "Describe this image." }))
+            // only the newest message carries its image, to keep requests small
+            if (m.image != null && i == history.lastIndex) {
+                parts.put(
+                    JSONObject().put(
+                        "inline_data",
+                        JSONObject().put("mime_type", "image/jpeg").put("data", m.image)
+                    )
+                )
+            }
+            contents.put(JSONObject().put("role", if (m.isUser) "user" else "model").put("parts", parts))
         }
         val body = JSONObject()
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))

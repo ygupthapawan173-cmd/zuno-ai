@@ -30,10 +30,21 @@ class OpenRouterClient {
     ): Flow<String> = callbackFlow {
         val messages = JSONArray()
         messages.put(JSONObject().put("role", "system").put("content", system))
-        history.forEach { m ->
-            messages.put(
-                JSONObject().put("role", if (m.isUser) "user" else "assistant").put("content", m.text)
-            )
+        history.forEachIndexed { i, m ->
+            val role = if (m.isUser) "user" else "assistant"
+            if (m.image != null && i == history.lastIndex) {
+                val content = JSONArray()
+                    .put(JSONObject().put("type", "text").put("text", m.text.ifEmpty { "Describe this image." }))
+                    .put(
+                        JSONObject().put("type", "image_url").put(
+                            "image_url",
+                            JSONObject().put("url", "data:image/jpeg;base64," + m.image)
+                        )
+                    )
+                messages.put(JSONObject().put("role", role).put("content", content))
+            } else {
+                messages.put(JSONObject().put("role", role).put("content", m.text))
+            }
         }
         val body = JSONObject()
             .put("model", model)

@@ -20,15 +20,22 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
 import com.zeno.ai.OrbState
-import com.zeno.ai.ui.theme.ZCyan
-import com.zeno.ai.ui.theme.ZMagenta
-import com.zeno.ai.ui.theme.ZViolet
 import kotlin.math.PI
 import kotlin.math.sin
 
+/** Colours used by the orb in each state. */
+data class OrbPalette(val name: String, val listen: Color, val think: Color, val speak: Color)
+
+val OrbPalettes = listOf(
+    OrbPalette("Cyber", Color(0xFF22E4FF), Color(0xFF8B5CF6), Color(0xFFFF3DCB)),
+    OrbPalette("Sunset", Color(0xFFFF9F43), Color(0xFFFF5E62), Color(0xFFFFC371)),
+    OrbPalette("Matrix", Color(0xFF39FF14), Color(0xFF00C853), Color(0xFFB2FF59)),
+    OrbPalette("Ocean", Color(0xFF4FACFE), Color(0xFF00F2FE), Color(0xFF43E97B)),
+)
+
 /** The glowing Jarvis orb. Colour and energy change with the assistant state; [level] is mic loudness 0..1. */
 @Composable
-fun Orb(state: OrbState, level: Float, modifier: Modifier = Modifier) {
+fun Orb(state: OrbState, level: Float, palette: OrbPalette, modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "orb")
     val pulse by transition.animateFloat(
         initialValue = 0f,
@@ -54,9 +61,9 @@ fun Orb(state: OrbState, level: Float, modifier: Modifier = Modifier) {
     )
     val accent by animateColorAsState(
         targetValue = when (state) {
-            OrbState.Idle, OrbState.Listening -> ZCyan
-            OrbState.Thinking -> ZViolet
-            OrbState.Speaking -> ZMagenta
+            OrbState.Idle, OrbState.Listening -> palette.listen
+            OrbState.Thinking -> palette.think
+            OrbState.Speaking -> palette.speak
         },
         animationSpec = tween(500),
         label = "accent",
@@ -67,7 +74,6 @@ fun Orb(state: OrbState, level: Float, modifier: Modifier = Modifier) {
         val r = size.minDimension / 2f
         val e = energy
 
-        // outer glow
         drawCircle(
             brush = Brush.radialGradient(
                 listOf(accent.copy(alpha = 0.30f + 0.2f * e), Color.Transparent),
@@ -78,7 +84,6 @@ fun Orb(state: OrbState, level: Float, modifier: Modifier = Modifier) {
             center = c,
         )
 
-        // expanding pulse rings
         for (i in 0..2) {
             val p = (pulse + i / 3f) % 1f
             drawCircle(
@@ -89,14 +94,13 @@ fun Orb(state: OrbState, level: Float, modifier: Modifier = Modifier) {
             )
         }
 
-        // breathing core
         val core = r * 0.40f * (1f + 0.06f * e * sin(pulse * 4f * PI.toFloat()))
         drawCircle(
             brush = Brush.radialGradient(
                 listOf(
                     Color.White.copy(alpha = 0.95f),
                     accent,
-                    ZViolet.copy(alpha = 0.85f),
+                    palette.think.copy(alpha = 0.85f),
                     Color.Transparent,
                 ),
                 center = c,
@@ -106,11 +110,10 @@ fun Orb(state: OrbState, level: Float, modifier: Modifier = Modifier) {
             center = c,
         )
 
-        // rotating arc
         rotate(degrees = spin, pivot = c) {
             drawArc(
                 brush = Brush.sweepGradient(
-                    listOf(Color.Transparent, accent, ZMagenta, Color.Transparent),
+                    listOf(Color.Transparent, accent, palette.speak, Color.Transparent),
                     center = c,
                 ),
                 startAngle = 0f,
