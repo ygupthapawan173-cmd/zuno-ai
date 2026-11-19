@@ -61,9 +61,14 @@ class ZenoEngine private constructor(private val app: Application) {
                 SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> Unit
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> error = "Mic permission ivvandi"
                 SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> error = "Voice kosam internet kavali"
+                12, 13 -> error = "Ee language ki speech recognition ledu (error $code). Google app lo Telugu voice typing download cheyandi, leda vere language try cheyandi."
+                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> error = "Mic busy undi (error 8). Konchem sepu aagi malli try cheyandi."
+                SpeechRecognizer.ERROR_AUDIO -> error = "Mic access ledu (error 3). Vere app mic vaduthunnadi emo."
+                SpeechRecognizer.ERROR_SERVER, 11 -> error = "Speech service error ($code). Google app update cheyandi, internet check cheyandi."
                 else -> error = "Voice error ($code)"
             }
         }
+        voice.onTtsIssue = { error = it }
         voice.onSpeakDone = {
             orb = OrbState.Idle
             if (settings.continuous) startListening()

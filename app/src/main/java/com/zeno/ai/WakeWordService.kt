@@ -126,8 +126,8 @@ class WakeWordService : Service() {
     private fun wake() {
         recognizer?.destroy()
         recognizer = null
-        ZenoEngine.get(this).startListening()
-        main.postDelayed({ loop() }, 1500)
+        main.postDelayed({ ZenoEngine.get(this).startListening() }, 700)
+        main.postDelayed({ loop() }, 2500)
     }
 
     override fun onDestroy() {

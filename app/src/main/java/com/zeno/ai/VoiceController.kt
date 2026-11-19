@@ -24,6 +24,7 @@ class VoiceController(private val ctx: Context) {
     var onError: (Int) -> Unit = {}
     var onLevel: (Float) -> Unit = {}
     var onSpeakDone: () -> Unit = {}
+    var onTtsIssue: (String) -> Unit = {}
 
     init {
         tts = TextToSpeech(ctx.applicationContext) { status -> ttsReady = status == TextToSpeech.SUCCESS }
@@ -84,12 +85,26 @@ class VoiceController(private val ctx: Context) {
 
     fun speak(text: String) {
         val clean = text.replace(Regex("[*_`#>]"), "").replace(Regex("\\s+"), " ").trim()
-        if (!ttsReady || clean.isEmpty()) {
+        if (clean.isEmpty()) {
+            main.post { onSpeakDone() }
+            return
+        }
+        if (!ttsReady) {
+            onTtsIssue("Text-to-speech inka ready kaledu. Konchem sepu aagi malli try cheyandi.")
             main.post { onSpeakDone() }
             return
         }
         val telugu = clean.count { it in 'ఀ'..'౿' } > clean.length / 4
-        tts?.language = Locale.forLanguageTag(if (telugu) "te-IN" else "en-IN")
+        val result = tts?.setLanguage(Locale.forLanguageTag(if (telugu) "te-IN" else "en-IN"))
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            val lang = if (telugu) "Telugu" else "English"
+            onTtsIssue(
+                "$lang voice ee phone lo ledu. Phone Settings > Text-to-speech output > Google lo " +
+                    "$lang voice download cheyandi."
+            )
+            main.post { onSpeakDone() }
+            return
+        }
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {}
             override fun onDone(utteranceId: String?) {
