@@ -42,6 +42,11 @@ class ZenoEngine private constructor(private val app: Application) {
         private set
     var error by mutableStateOf<String?>(null)
     var openTab by mutableStateOf<Int?>(null)
+    var diag by mutableStateOf("")
+        private set
+
+    private var wakePending = false
+    private var fromWake = false
 
     private var seq: Long = (messages.maxOfOrNull { it.id } ?: 0L) + 1
     private var job: Job? = null
@@ -56,6 +61,15 @@ class ZenoEngine private constructor(private val app: Application) {
         voice.onError = { code ->
             partial = ""
             orb = OrbState.Idle
+            if (fromWake) {
+                fromWake = false
+                val said = if (code == SpeechRecognizer.ERROR_NO_MATCH || code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
+                    "Sorry, I didn't catch that." else "Sorry, the microphone had a problem."
+                if (settings.speak) {
+                    orb = OrbState.Speaking
+                    voice.speak(said)
+                }
+            }
             when (code) {
                 -1 -> error = "Ee phone lo speech recognition ledu"
                 SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> Unit
@@ -71,7 +85,12 @@ class ZenoEngine private constructor(private val app: Application) {
         voice.onTtsIssue = { error = it }
         voice.onSpeakDone = {
             orb = OrbState.Idle
-            if (settings.continuous) startListening()
+            if (wakePending) {
+                wakePending = false
+                startListening()
+            } else if (settings.continuous) {
+                startListening()
+            }
         }
     }
 
@@ -85,7 +104,32 @@ class ZenoEngine private constructor(private val app: Application) {
         voice.listen(settings.lang)
     }
 
+    /** Called by the "Hey Zeno" service: say "Yes?" so the user knows we heard, then listen. */
+    fun onWake() {
+        if (orb != OrbState.Idle) return
+        error = null
+        fromWake = true
+        wakePending = true
+        orb = OrbState.Speaking
+        voice.speak("Yes?")
+    }
+
+    fun runDiagnostics() {
+        val mic = androidx.core.content.ContextCompat.checkSelfPermission(app, android.Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        val key = if (settings.provider == "openrouter") settings.orKey else settings.apiKey
+        diag = voice.diagnose() +
+            "\nMic permission: " + (if (mic) "OK" else "ivvaledu") +
+            "\nAPI key: " + (if (key.isBlank()) "ledu" else "set") +
+            "\nHey Zeno: " + (if (settings.wake) "on" else "off")
+        wakePending = false
+        orb = OrbState.Speaking
+        voice.speak("Voice test. Hello from Zeno.")
+    }
+
     fun stop() {
+        wakePending = false
+        fromWake = false
         job?.cancel()
         voice.cancelListening()
         voice.stopSpeaking()
@@ -104,6 +148,7 @@ class ZenoEngine private constructor(private val app: Application) {
         job?.cancel()
         voice.stopSpeaking()
         error = null
+        fromWake = false
         messages += ChatMessage(seq++, "user", t, image)
 
         val translator = settings.mode == "translator"
@@ -118,8 +163,8 @@ class ZenoEngine private constructor(private val app: Application) {
 
         val useOr = settings.provider == "openrouter"
         if ((if (useOr) settings.orKey else settings.apiKey).isBlank()) {
-            error = "Settings lo " + (if (useOr) "OpenRouter" else "Gemini") + " API key add cheyandi"
-            orb = OrbState.Idle
+            fail("Settings lo " + (if (useOr) "OpenRouter" else "Gemini") + " API key add cheyandi",
+                "Please add an API key in Zeno settings.", viaVoice)
             return
         }
 
@@ -147,19 +192,27 @@ class ZenoEngine private constructor(private val app: Application) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                error = e.message ?: "Network error"
                 if (sb.isEmpty() && idx <= messages.lastIndex) messages.removeAt(idx)
-                orb = OrbState.Idle
                 store.saveHistory(messages)
+                fail(e.message ?: "Network error", "Sorry, I could not get an answer. Please check your internet or API key.", viaVoice)
                 return@launch
             }
             if (sb.isEmpty()) {
                 if (idx <= messages.lastIndex) messages.removeAt(idx)
-                error = "AI nunchi reply raledu"
-                orb = OrbState.Idle
+                fail("AI nunchi reply raledu", "Sorry, I got no reply. Please try again.", viaVoice)
                 return@launch
             }
             finish(sb.toString(), viaVoice)
+        }
+    }
+
+    private fun fail(message: String, spoken: String, viaVoice: Boolean) {
+        error = message
+        if (viaVoice && settings.speak) {
+            orb = OrbState.Speaking
+            voice.speak(spoken)
+        } else {
+            orb = OrbState.Idle
         }
     }
 

@@ -127,6 +127,20 @@ class VoiceController(private val ctx: Context) {
         }
     }
 
+    fun diagnose(): String {
+        fun avail(tag: String): String = when (tts?.isLanguageAvailable(Locale.forLanguageTag(tag))) {
+            TextToSpeech.LANG_AVAILABLE, TextToSpeech.LANG_COUNTRY_AVAILABLE, TextToSpeech.LANG_COUNTRY_VAR_AVAILABLE -> "OK"
+            TextToSpeech.LANG_MISSING_DATA -> "voice data download cheyali"
+            TextToSpeech.LANG_NOT_SUPPORTED -> "supported kaadu"
+            else -> "teliyadu"
+        }
+        return "Speech recognition: " + (if (SpeechRecognizer.isRecognitionAvailable(ctx)) "OK" else "ee phone lo ledu") +
+            "\nTTS engine: " + (tts?.defaultEngine ?: "ledu") + " (ready: $ttsReady)" +
+            "\nTelugu voice: " + avail("te-IN") +
+            "\nEnglish voice: " + avail("en-IN") +
+            "\nHindi voice: " + avail("hi-IN")
+    }
+
     fun stopSpeaking() {
         tts?.stop()
     }

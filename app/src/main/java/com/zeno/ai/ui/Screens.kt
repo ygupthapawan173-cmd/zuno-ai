@@ -573,6 +573,23 @@ private fun SettingsScreen(vm: ZenoEngine) {
             else if (on) vm.error = "Mic permission ivvandi, tarvata malli on cheyandi"
             else WakeWordService.stop(ctx)
         }
+        OutlinedButton(
+            onClick = { vm.runDiagnostics() },
+            border = BorderStroke(1.dp, ZCyan.copy(alpha = 0.6f)),
+        ) { Text("Voice test (Telugu/English check)", color = ZCyan) }
+        if (vm.diag.isNotBlank()) {
+            Text(
+                vm.diag,
+                color = ZTextHi,
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(ZCard)
+                    .padding(12.dp),
+            )
+        }
         SwitchRow("Reply voice lo chepali", "Voice tho adigina prathi answer ni Zeno matladutundi", s.speak) {
             vm.updateSettings(s.copy(speak = it))
         }

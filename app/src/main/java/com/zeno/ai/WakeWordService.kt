@@ -43,18 +43,34 @@ class WakeWordService : Service() {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val notification: Notification = NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("Zeno vintunnadi")
-            .setContentText("\"Hey Zeno\" ani cheppandi")
-            .setContentIntent(open)
-            .setOngoing(true)
-            .build()
+        openIntent = open
+        val notification = buildNotification("\"Hey Zeno\" ani cheppandi")
         try {
             ServiceCompat.startForeground(this, 1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         } catch (e: Exception) {
             stopSelf()
         }
+    }
+
+    private var openIntent: PendingIntent? = null
+    private var lastShown = ""
+
+    private fun buildNotification(text: String): Notification =
+        NotificationCompat.Builder(this, CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentTitle("Zeno vintunnadi")
+            .setContentText(text)
+            .setContentIntent(openIntent)
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .build()
+
+    /** Shows the last thing the recognizer heard, so you can see why a wake word did or did not match. */
+    private fun showHeard(text: String) {
+        if (text.isBlank() || text == lastShown) return
+        lastShown = text
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(1, buildNotification("Vinnadi: \"$text\""))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -117,16 +133,18 @@ class WakeWordService : Service() {
 
     private fun heardWake(b: Bundle?): Boolean {
         val list = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) ?: return false
+        list.firstOrNull()?.let { showHeard(it) }
         return list.any { s ->
             val l = s.lowercase()
-            WAKE.any { l.contains(it) }
+            val tokens = l.split(Regex("[^\\p{L}]+")).filter { it.isNotEmpty() }
+            WAKE.any { l.contains(it) } || tokens.any { it in NAMES }
         }
     }
 
     private fun wake() {
         recognizer?.destroy()
         recognizer = null
-        main.postDelayed({ ZenoEngine.get(this).startListening() }, 700)
+        main.postDelayed({ ZenoEngine.get(this).onWake() }, 300)
         main.postDelayed({ loop() }, 2500)
     }
 
@@ -139,6 +157,9 @@ class WakeWordService : Service() {
 
     companion object {
         private const val CHANNEL = "zeno_wake"
+        private val NAMES = setOf(
+            "zeno", "zino", "jeno", "xeno", "zenu", "jino", "zenno", "zeeno", "jeeno", "zena", "jena", "chino", "cheno", "zenoh", "zeenu",
+        )
         private val WAKE = listOf("hey zeno", "hey zino", "hey jeno", "hey xeno", "hey zenu", "a zeno", "hi zeno", "జీనో", "జెనో")
 
         fun start(ctx: Context) {
