@@ -1,11 +1,13 @@
 package com.zeno.ai.ui
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
+import android.speech.RecognizerIntent
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -274,6 +276,30 @@ private fun HomeScreen(vm: ZenoEngine) {
             vm.stop()
         }
     }
+    // Fallback: Google's own voice dialog, which works on phones where the in-app mic path fails.
+    val dialog = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        val text = res.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        if (res.resultCode == Activity.RESULT_OK && !text.isNullOrBlank()) vm.send(text, viaVoice = true)
+    }
+    val openDialog: () -> Unit = {
+        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, s.lang)
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Matladandi")
+        try {
+            dialog.launch(i)
+        } catch (e: Exception) {
+            vm.error = "Ee phone lo voice input ledu. Play Store nunchi Google app install/update cheyandi."
+        }
+    }
+    var handledFallback by remember { mutableIntStateOf(vm.fallbackRequest) }
+    LaunchedEffect(vm.fallbackRequest) {
+        if (vm.fallbackRequest != handledFallback) {
+            handledFallback = vm.fallbackRequest
+            openDialog()
+        }
+    }
+
     val translator = s.mode == "translator"
     val status = when (vm.orb) {
         OrbState.Idle -> if (translator) "Translator: tap and speak" else "Tap the orb and speak"
@@ -309,7 +335,17 @@ private fun HomeScreen(vm: ZenoEngine) {
                 .size(250.dp)
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onTap() },
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "🎙 Orb pani cheyakapothe ikkada nokkandi",
+            color = ZTextLo,
+            fontSize = 12.sp,
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .clickable { openDialog() }
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        )
+        Spacer(Modifier.height(4.dp))
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,

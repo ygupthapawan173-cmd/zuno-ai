@@ -44,6 +44,9 @@ class ZenoEngine private constructor(private val app: Application) {
     var openTab by mutableStateOf<Int?>(null)
     var diag by mutableStateOf("")
         private set
+    /** Bumped when the built-in mic path fails, so the UI can open Google's voice dialog instead. */
+    var fallbackRequest by mutableStateOf(0)
+        private set
 
     private var wakePending = false
     private var fromWake = false
@@ -61,6 +64,7 @@ class ZenoEngine private constructor(private val app: Application) {
         voice.onError = { code ->
             partial = ""
             orb = OrbState.Idle
+            val wasWake = fromWake
             if (fromWake) {
                 fromWake = false
                 val said = if (code == SpeechRecognizer.ERROR_NO_MATCH || code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
@@ -81,6 +85,7 @@ class ZenoEngine private constructor(private val app: Application) {
                 SpeechRecognizer.ERROR_SERVER, 11 -> error = "Speech service error ($code). Google app update cheyandi, internet check cheyandi."
                 else -> error = "Voice error ($code)"
             }
+            if (!wasWake && code in FALLBACK_CODES) fallbackRequest++
         }
         voice.onTtsIssue = { error = it }
         voice.onSpeakDone = {
@@ -299,6 +304,7 @@ class ZenoEngine private constructor(private val app: Application) {
     }
 
     companion object {
+        private val FALLBACK_CODES = setOf(-1, 2, 3, 4, 5, 8, 11)
         private val BRIEFING = Regex("good morning|briefing|daily brief|సుప్రభాతం|శుభోదయం")
         private const val BASE_PROMPT =
             "You are Zeno, a friendly, sharp, voice-first AI assistant. " +
