@@ -214,7 +214,7 @@ class CommandHandler(private val ctx: Context) {
 
     // ------------------------------------------------------------ apps / torch
 
-    private fun openApp(spoken: String): String {
+    fun openApp(spoken: String): String {
         val name = aliases[spoken] ?: spoken
         val pm = ctx.packageManager
         val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)

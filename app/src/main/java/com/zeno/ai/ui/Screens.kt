@@ -83,6 +83,7 @@ import androidx.core.content.FileProvider
 import com.zeno.ai.ChatMessage
 import com.zeno.ai.ImageUtil
 import com.zeno.ai.OrbState
+import com.zeno.ai.PhoneControlService
 import com.zeno.ai.WakeWordService
 import com.zeno.ai.ZenoEngine
 import com.zeno.ai.ui.theme.ZBg
@@ -302,7 +303,11 @@ private fun HomeScreen(vm: ZenoEngine) {
 
     val translator = s.mode == "translator"
     val status = when (vm.orb) {
-        OrbState.Idle -> if (translator) "Translator: tap and speak" else "Tap the orb and speak"
+        OrbState.Idle -> when (s.mode) {
+            "translator" -> "Translator: tap and speak"
+            "agent" -> "Phone control: em cheyalo cheppandi"
+            else -> "Tap the orb and speak"
+        }
         OrbState.Listening -> "Listening…"
         OrbState.Thinking -> "Thinking…"
         OrbState.Speaking -> "Speaking… tap to stop"
@@ -314,7 +319,7 @@ private fun HomeScreen(vm: ZenoEngine) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Pills(
-            options = listOf("assistant" to "Assistant", "translator" to "Translator"),
+            options = listOf("assistant" to "Assistant", "agent" to "Phone control", "translator" to "Translator"),
             selected = s.mode,
             onSelect = { vm.updateSettings(s.copy(mode = it)) },
         )
@@ -368,6 +373,8 @@ private fun HomeScreen(vm: ZenoEngine) {
 private fun QuickChips(vm: ZenoEngine) {
     val chips = if (vm.settings.mode == "translator") {
         emptyList()
+    } else if (vm.settings.mode == "agent") {
+        listOf("Open WhatsApp", "Open Settings", "YouTube lo Telugu songs search chey", "Go home")
     } else {
         listOf("Good morning", "What's the time?", "Open YouTube", "Torch on", "Timer 5 minutes", "Tell me a joke")
     }
@@ -609,6 +616,23 @@ private fun SettingsScreen(vm: ZenoEngine) {
             else if (on) vm.error = "Mic permission ivvandi, tarvata malli on cheyandi"
             else WakeWordService.stop(ctx)
         }
+        SectionTitle("Phone control (full control)")
+        Text(
+            if (PhoneControlService.instance != null) "Status: ON. Zeno screen chusi tap/type/scroll cheyagaladu."
+            else "Status: OFF. Accessibility lo Zeno AI ni on cheyandi.",
+            color = ZTextLo,
+            fontSize = 12.sp,
+        )
+        OutlinedButton(
+            onClick = { vm.openAccessibilitySettings() },
+            border = BorderStroke(1.dp, ZCyan.copy(alpha = 0.6f)),
+        ) { Text("Phone control on cheyyi (Accessibility)", color = ZCyan) }
+        Text(
+            "Voice tab lo Phone control mode select chesi cheppandi. Idi Gemini provider tho baaga pani chesthundi. " +
+                "Payments, purchases, delete lanti steps Zeno cheyadu.",
+            color = ZTextLo,
+            fontSize = 12.sp,
+        )
         OutlinedButton(
             onClick = { vm.runDiagnostics() },
             border = BorderStroke(1.dp, ZCyan.copy(alpha = 0.6f)),

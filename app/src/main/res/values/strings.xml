@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Zeno AI</string>
+    <string name="a11y_description">Zeno AI phone control: lets Zeno read the screen and tap, type and scroll for you when you ask it to.</string>
 </resources>

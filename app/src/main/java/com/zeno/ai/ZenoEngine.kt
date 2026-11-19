@@ -2,6 +2,8 @@ package com.zeno.ai
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
+import android.provider.Settings
 import android.speech.SpeechRecognizer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -173,6 +175,11 @@ class ZenoEngine private constructor(private val app: Application) {
             return
         }
 
+        if (settings.mode == "agent" && image == null) {
+            runAgentTask(t, viaVoice)
+            return
+        }
+
         val briefing = image == null && !translator && BRIEFING.containsMatchIn(t.lowercase())
         val history = if (translator) messages.toList().takeLast(1) else messages.toList().takeLast(20)
         val system = systemPrompt()
@@ -208,6 +215,59 @@ class ZenoEngine private constructor(private val app: Application) {
                 return@launch
             }
             finish(sb.toString(), viaVoice)
+        }
+    }
+
+    // ------------------------------------------------------------ phone control agent
+
+    private suspend fun askOnce(system: String, user: String): String {
+        val ctx = listOf(ChatMessage(0, "user", user))
+        val flow = if (settings.provider == "openrouter") orClient.stream(settings.orKey, settings.orModel, system, ctx)
+        else client.stream(settings.apiKey, settings.model, system, ctx)
+        val sb = StringBuilder()
+        flow.collect { sb.append(it) }
+        return sb.toString()
+    }
+
+    fun openAccessibilitySettings() {
+        try {
+            app.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+        }
+    }
+
+    private fun runAgentTask(task: String, viaVoice: Boolean) {
+        if (PhoneControlService.instance == null) {
+            fail(
+                "Phone control off undi. Accessibility settings lo Zeno AI ni on cheyandi.",
+                "Please turn on Zeno phone control in accessibility settings.",
+                viaVoice,
+            )
+            openAccessibilitySettings()
+            return
+        }
+        messages += ChatMessage(seq++, "model", "Pani start chesthunnanu…")
+        val idx = messages.lastIndex
+        orb = OrbState.Thinking
+        job = scope.launch {
+            val log = StringBuilder()
+            val agent = PhoneAgent { system, user -> askOnce(system, user) }
+            val result = try {
+                agent.run(task) { step ->
+                    log.appendLine(step)
+                    if (idx <= messages.lastIndex) messages[idx] = messages[idx].copy(text = log.toString().trim())
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error = e.message ?: "Network error"
+                "Sorry, I could not finish. Please check your internet or API key."
+            }
+            val final = if (result == "NEEDS_SERVICE") "Phone control off undi" else result
+            if (idx <= messages.lastIndex) {
+                messages[idx] = messages[idx].copy(text = (log.toString() + "\n" + final).trim())
+            }
+            finish(final, viaVoice)
         }
     }
 
