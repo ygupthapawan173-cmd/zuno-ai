@@ -16,6 +16,9 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import ai.picovoice.porcupine.Porcupine
+import ai.picovoice.porcupine.PorcupineManager
+import ai.picovoice.porcupine.PorcupineManagerCallback
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -81,9 +84,61 @@ class WakeWordService : Service() {
         return START_STICKY
     }
 
+    // ---- Offline wake word (Porcupine, built-in keyword "Jarvis"). Used when a Picovoice key is set.
+    private var porcupine: PorcupineManager? = null
+
+    private fun startPorcupine(key: String): Boolean {
+        val engine = ZenoEngine.get(this)
+        return try {
+            porcupine?.delete()
+            porcupine = PorcupineManager.Builder()
+                .setAccessKey(key)
+                .setKeyword(Porcupine.BuiltInKeyword.JARVIS)
+                .setSensitivity(0.7f)
+                .build(applicationContext, PorcupineManagerCallback { main.post { onPorcupineWake() } })
+            porcupine?.start()
+            engine.logEvent("wake word engine started (say: Jarvis)")
+            showHeard("Jarvis ani cheppandi")
+            true
+        } catch (e: Exception) {
+            engine.logEvent("wake word engine error: " + (e.message ?: e.javaClass.simpleName))
+            porcupine = null
+            false
+        }
+    }
+
+    private fun onPorcupineWake() {
+        val engine = ZenoEngine.get(this)
+        engine.logEvent("wake word detected: Jarvis")
+        try {
+            porcupine?.stop()
+        } catch (e: Exception) {
+        }
+        engine.onWake()
+        main.postDelayed({ resumePorcupine() }, 3000)
+    }
+
+    private fun resumePorcupine() {
+        if (!running) return
+        val engine = ZenoEngine.get(this)
+        if (engine.orb != OrbState.Idle) {
+            main.postDelayed({ resumePorcupine() }, 800)
+            return
+        }
+        try {
+            porcupine?.start()
+        } catch (e: Exception) {
+            engine.logEvent("wake word restart error: " + (e.message ?: ""))
+        }
+    }
+
     private fun loop() {
         if (!running) return
         val engine = ZenoEngine.get(this)
+        val key = engine.settings.picoKey.trim()
+        if (key.isNotEmpty()) {
+            if (porcupine != null || startPorcupine(key)) return
+        }
         if (engine.orb != OrbState.Idle) {
             main.postDelayed({ loop() }, 800)
             return
@@ -151,6 +206,12 @@ class WakeWordService : Service() {
     override fun onDestroy() {
         running = false
         main.removeCallbacksAndMessages(null)
+        try {
+            porcupine?.stop()
+            porcupine?.delete()
+        } catch (e: Exception) {
+        }
+        porcupine = null
         recognizer?.destroy()
         super.onDestroy()
     }

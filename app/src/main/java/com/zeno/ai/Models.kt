@@ -20,4 +20,5 @@ data class AppSettings(
     val wake: Boolean = false,
     val city: String = "",
     val theme: Int = 0,
+    val picoKey: String = "",
 )

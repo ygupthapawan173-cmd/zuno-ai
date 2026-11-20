@@ -622,7 +622,23 @@ private fun SettingsScreen(vm: ZenoEngine) {
             onSelect = { vm.updateSettings(s.copy(theme = it.toInt())) },
         )
 
-        SwitchRow("Hey Zeno wake word", "App close chesina, screen off lo kuda \"Hey Zeno\" ani pilavochu", s.wake) { on ->
+        SectionTitle("Wake word key (Picovoice, free)")
+        OutlinedTextField(
+            value = s.picoKey,
+            onValueChange = { vm.updateSettings(s.copy(picoKey = it.trim())) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            placeholder = { Text("AccessKey paste cheyandi") },
+            shape = RoundedCornerShape(14.dp),
+            colors = fieldColors(),
+        )
+        Text(
+            "Free key: console.picovoice.ai. Key unte wake word \"Jarvis\" (offline, accurate). Key lekapothe \"Hey Zeno\" (takkuva accurate).",
+            color = ZTextLo,
+            fontSize = 12.sp,
+        )
+        SwitchRow("Wake word (Jarvis / Hey Zeno)", "App close chesina, screen off lo kuda pilavochu", s.wake) { on ->
             vm.updateSettings(s.copy(wake = on))
             val mic = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
             if (on && mic) WakeWordService.start(ctx)

@@ -26,6 +26,7 @@ class Store(ctx: Context) {
             wake = prefs.getBoolean("wake", d.wake),
             city = prefs.getString("city", d.city) ?: d.city,
             theme = prefs.getInt("theme", d.theme),
+            picoKey = prefs.getString("picoKey", d.picoKey) ?: d.picoKey,
         )
     }
 
@@ -43,6 +44,7 @@ class Store(ctx: Context) {
             .putBoolean("wake", s.wake)
             .putString("city", s.city)
             .putInt("theme", s.theme)
+            .putString("picoKey", s.picoKey)
             .apply()
     }
 
