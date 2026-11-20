@@ -25,6 +25,7 @@ class VoiceController(private val ctx: Context) {
     var onLevel: (Float) -> Unit = {}
     var onSpeakDone: () -> Unit = {}
     var onTtsIssue: (String) -> Unit = {}
+    var onLog: (String) -> Unit = {}
 
     init {
         tts = TextToSpeech(ctx.applicationContext) { status -> ttsReady = status == TextToSpeech.SUCCESS }
@@ -32,15 +33,21 @@ class VoiceController(private val ctx: Context) {
 
     fun listen(lang: String) {
         if (!SpeechRecognizer.isRecognitionAvailable(ctx)) {
+            onLog("recognition service NOT available on this phone")
             onError(-1)
             return
         }
+        onLog("listen start, language=$lang")
         stopSpeaking()
         recognizer?.destroy()
         val r = SpeechRecognizer.createSpeechRecognizer(ctx)
         r.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
+            override fun onReadyForSpeech(params: Bundle?) {
+                onLog("mic ready, speak now")
+            }
+            override fun onBeginningOfSpeech() {
+                onLog("speech detected")
+            }
             override fun onRmsChanged(rmsdB: Float) {
                 onLevel(((rmsdB + 2f) / 12f).coerceIn(0f, 1f))
             }
@@ -51,6 +58,7 @@ class VoiceController(private val ctx: Context) {
             }
 
             override fun onError(error: Int) {
+                onLog("recognizer error code $error")
                 onLevel(0f)
                 this@VoiceController.onError(error)
             }
@@ -58,6 +66,7 @@ class VoiceController(private val ctx: Context) {
             override fun onResults(results: Bundle?) {
                 val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     ?.firstOrNull().orEmpty()
+                onLog("final result: \"$text\"")
                 if (text.isBlank()) this@VoiceController.onError(SpeechRecognizer.ERROR_NO_MATCH)
                 else onFinal(text)
             }

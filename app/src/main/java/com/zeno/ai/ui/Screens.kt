@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.speech.RecognizerIntent
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -265,7 +266,18 @@ private fun HomeScreen(vm: ZenoEngine) {
     val palette = OrbPalettes[s.theme.coerceIn(0, OrbPalettes.lastIndex)]
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) vm.startListening() else vm.error = "Mic permission ivvandi"
+        if (ok) {
+            vm.startListening()
+        } else {
+            vm.error = "Mic permission ivvandi. App settings lo Microphone ni Allow cheyandi."
+            vm.logEvent("mic permission denied, opening app settings")
+            try {
+                ctx.startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + ctx.packageName))
+                )
+            } catch (e: Exception) {
+            }
+        }
     }
     val onTap: () -> Unit = {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -280,6 +292,7 @@ private fun HomeScreen(vm: ZenoEngine) {
     // Fallback: Google's own voice dialog, which works on phones where the in-app mic path fails.
     val dialog = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
         val text = res.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        vm.logEvent("google dialog result code=${res.resultCode} text=${text ?: "none"}")
         if (res.resultCode == Activity.RESULT_OK && !text.isNullOrBlank()) vm.send(text, viaVoice = true)
     }
     val openDialog: () -> Unit = {
@@ -637,6 +650,19 @@ private fun SettingsScreen(vm: ZenoEngine) {
             onClick = { vm.runDiagnostics() },
             border = BorderStroke(1.dp, ZCyan.copy(alpha = 0.6f)),
         ) { Text("Voice test (Telugu/English check)", color = ZCyan) }
+        SectionTitle("Debug log (problem vaste screenshot pampandi)")
+        Text(
+            if (vm.log.isEmpty()) "Inka emi ledu. Voice tab lo orb tap chesi, ikkadiki randi."
+            else vm.log.take(16).joinToString("\n"),
+            color = ZTextHi,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(ZCard)
+                .padding(12.dp),
+        )
         if (vm.diag.isNotBlank()) {
             Text(
                 vm.diag,

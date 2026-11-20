@@ -18,6 +18,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
+import java.text.SimpleDateFormat
+import java.util.Locale
 import java.util.Date
 
 /**
@@ -50,6 +52,14 @@ class ZenoEngine private constructor(private val app: Application) {
     var fallbackRequest by mutableStateOf(0)
         private set
 
+    /** Newest-first debug log, shown in Settings so problems can be diagnosed. */
+    val log = mutableStateListOf<String>()
+
+    fun logEvent(text: String) {
+        log.add(0, SimpleDateFormat("HH:mm:ss", Locale.US).format(Date()) + "  " + text)
+        while (log.size > 40) log.removeAt(log.lastIndex)
+    }
+
     private var wakePending = false
     private var fromWake = false
 
@@ -57,6 +67,7 @@ class ZenoEngine private constructor(private val app: Application) {
     private var job: Job? = null
 
     init {
+        voice.onLog = { logEvent(it) }
         voice.onPartial = { partial = it }
         voice.onLevel = { level = it }
         voice.onFinal = {
@@ -104,6 +115,7 @@ class ZenoEngine private constructor(private val app: Application) {
     // ------------------------------------------------------------ voice
 
     fun startListening() {
+        logEvent("startListening (orb tap or wake word)")
         error = null
         job?.cancel()
         partial = ""
@@ -152,6 +164,7 @@ class ZenoEngine private constructor(private val app: Application) {
     fun send(text: String, viaVoice: Boolean = false, image: String? = null) {
         val t = text.trim()
         if (t.isEmpty() && image == null) return
+        logEvent("send (mode=${settings.mode}, voice=$viaVoice): " + t.take(50))
         job?.cancel()
         voice.stopSpeaking()
         error = null
@@ -272,6 +285,7 @@ class ZenoEngine private constructor(private val app: Application) {
     }
 
     private fun fail(message: String, spoken: String, viaVoice: Boolean) {
+        logEvent("FAIL: $message")
         error = message
         if (viaVoice && settings.speak) {
             orb = OrbState.Speaking
